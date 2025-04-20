@@ -60,10 +60,16 @@ app.use('/api/auth/register', (req, res, next) => {
 
 // Enable CORS with proper credential handling
 app.use(cors({
-  origin: 'http://localhost:5173', // Your frontend origin
-  credentials: true, // Allow credentials
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token']
+  origin: process.env.CORS_ORIGIN ? 
+    process.env.CORS_ORIGIN.split(',') : 
+    ['http://localhost:5173', 'http://127.0.0.1:5173', 'https://wells-gilt.vercel.app'],
+  credentials: true,
+  methods: process.env.CORS_METHODS ? 
+    process.env.CORS_METHODS.split(',') : 
+    ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: process.env.ALLOWED_HEADERS ? 
+    process.env.ALLOWED_HEADERS.split(',') : 
+    ['Content-Type', 'Authorization', 'x-auth-token']
 }));
 
 // Mount routers
