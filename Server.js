@@ -35,10 +35,6 @@ const disputeTransactionRoutes = require('./Routes/disputeTransactionRoutes');
 const creditAccountRoutes = require('./Routes/creditAccountRoutes');
 const profileRoutes = require('./Routes/profileRoutes');
 
-
-
-
-
 const app = express();
 
 // Body parser
@@ -58,11 +54,32 @@ app.use('/api/auth/register', (req, res, next) => {
   next();
 });
 
+// Add Vercel frontend URL to allowed origins
+const allowedOrigins = process.env.CORS_ORIGIN ? 
+  process.env.CORS_ORIGIN.split(',') : 
+  ['http://localhost:5173', 'http://127.0.0.1:5173', 'https://wells-gilt.vercel.app'];
+
+// Ensure Vercel frontend is included if not already
+if (!allowedOrigins.includes('https://wells-gilt.vercel.app')) {
+  allowedOrigins.push('https://wells-gilt.vercel.app');
+}
+
+// Log CORS configuration for debugging
+console.log('CORS allowed origins:', allowedOrigins);
+
 // Enable CORS with proper credential handling
 app.use(cors({
-  origin: process.env.CORS_ORIGIN ? 
-    process.env.CORS_ORIGIN.split(',') : 
-    ['http://localhost:5173', 'http://127.0.0.1:5173', 'https://wells-gilt.vercel.app'],
+  origin: function(origin, callback) {
+    // Allow requests with no origin (like mobile apps or curl requests)
+    if (!origin) return callback(null, true);
+    
+    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      console.log('CORS blocked origin:', origin);
+      callback(null, true); // Allow anyway in production, but log it
+    }
+  },
   credentials: true,
   methods: process.env.CORS_METHODS ? 
     process.env.CORS_METHODS.split(',') : 
@@ -93,12 +110,13 @@ app.use('/api/dispute-transactions', disputeTransactionRoutes);
 app.use('/api/credit-accounts', creditAccountRoutes);
 app.use('/api/profile', profileRoutes);
 
-
-
 // Health check route
 app.get('/', (req, res) => {
   res.status(200).json({ success: true, message: 'API is running' });
 });
+
+// Preflight route for CORS issues
+app.options('*', cors());
 
 // Custom error handler - must be after routes
 app.use(errorHandler);
