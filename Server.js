@@ -57,7 +57,7 @@ app.use('/api/auth/register', (req, res, next) => {
 // Add Vercel frontend URL to allowed origins
 const allowedOrigins = process.env.CORS_ORIGIN ? 
   process.env.CORS_ORIGIN.split(',') : 
-  ['http://localhost:5173', 'http://127.0.0.1:5173', 'https://wells-gilt.vercel.app'];
+  ['https://wells-gilt.vercel.app'];
 
 // Ensure Vercel frontend is included if not already
 if (!allowedOrigins.includes('https://wells-gilt.vercel.app')) {
