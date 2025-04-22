@@ -1,6 +1,5 @@
 const mongoose = require('mongoose');
 const User = require('../Model/UserModel');
-// const CheckingAccount = require('../Model/CheckDepositLimit');
 const CheckingAccount = require('../Model/CheckingAccountModel');
 const { generateTransactionReference } = require('../Utils/transactionUtils');
 
@@ -28,7 +27,7 @@ exports.getCheckingAccount = async (req, res) => {
     }
    
     // DEBUG: List all checking accounts for this user from CheckingAccount collection
-    const allUserAccounts = await CheckingAccount.find({ userId: userId });
+    let allUserAccounts = await CheckingAccount.find({ userId: userId });
     console.log(`User has ${allUserAccounts.length} checking accounts in CheckingAccount collection`);
     
     // If user has no checking accounts in CheckingAccount collection, but has accounts in User model
@@ -81,7 +80,7 @@ exports.getCheckingAccount = async (req, res) => {
         await user.save();
         console.log('Updated user with references to new checking accounts');
         
-        // Re-fetch the accounts after creation
+        // Re-fetch the accounts after creation - FIXED: used let declaration above
         allUserAccounts = await CheckingAccount.find({ userId: userId });
       }
     }
