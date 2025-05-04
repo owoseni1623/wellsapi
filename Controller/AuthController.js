@@ -10,6 +10,16 @@ const generateToken = (id) => {
   });
 };
 
+// Calculate tax based on deposit amount (following simplified US tax rules)
+const calculateTax = (depositAmount) => {
+  // For this implementation, using a simplified tax rate of 15%
+  // In a real application, you would implement more complex tax calculations
+  // based on actual tax brackets, state taxes, etc.
+  const taxRate = 0.15;
+  const taxAmount = depositAmount * taxRate;
+  return parseFloat(taxAmount.toFixed(2)); // Round to 2 decimal places
+};
+
 // @desc    Register user
 // @route   POST /api/auth/register
 // @access  Public
@@ -111,24 +121,44 @@ exports.register = async (req, res, next) => {
     // Fixed routing number
     const routingNumber = '121000248';
 
-    // Create initial transaction
-    const initialTransaction = {
+    // Initial deposit amount
+    const initialDepositAmount = 1600000.00;
+    
+    // Calculate tax on initial deposit
+    const taxAmount = calculateTax(initialDepositAmount);
+    
+    // Calculate net amount after tax
+    const netAmountAfterTax = initialDepositAmount - taxAmount;
+
+    // Create transactions for initial deposit and tax
+    const initialDepositTransaction = {
       date: new Date(),
       description: 'Initial deposit',
-      amount: 1600000.00,
+      amount: initialDepositAmount,
       type: 'credit',
       category: 'Deposit',
-      balance: 1600000.00
+      balance: initialDepositAmount,
+      permanent: true // Flag to ensure this doesn't get cleared
+    };
+    
+    const taxTransaction = {
+      date: new Date(),
+      description: 'Federal tax withholding (15%)',
+      amount: taxAmount,
+      type: 'debit',
+      category: 'Tax',
+      balance: netAmountAfterTax,
+      permanent: true // Flag to ensure this doesn't get cleared
     };
 
-    // Create initial account
+    // Create initial account with both transactions
     const initialAccount = {
       accountNumber: accountNumber,
       routingNumber: routingNumber,
       accountType: 'Checking',
       accountName: 'Everyday Checking',
-      balance: 1600000.00,
-      transactions: [initialTransaction]
+      balance: netAmountAfterTax, // Balance after tax deduction
+      transactions: [initialDepositTransaction, taxTransaction]
     };
 
     // Process date of birth
@@ -239,7 +269,6 @@ exports.register = async (req, res, next) => {
   }
 };
 
-// Rest of the controller remains the same
 // In AuthController.js, in the login function
 exports.login = async (req, res, next) => {
   try {
