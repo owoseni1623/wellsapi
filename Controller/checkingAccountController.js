@@ -372,7 +372,7 @@ function sendFormattedAccountResponse(checkingAccount, res) {
     ? checkingAccount.transactions.sort((a, b) => new Date(b.date) - new Date(a.date))
     : [];
 
-  // Format account data for frontend
+  // Make sure we're including ALL transactions regardless of category
   const formattedAccount = {
     id: checkingAccount._id,
     accountNumber: maskAccountNumber(checkingAccount.accountNumber),
