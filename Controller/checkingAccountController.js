@@ -46,24 +46,53 @@ exports.getCheckingAccount = async (req, res) => {
         for (let i = 0; i < checkingAccounts.length; i++) {
           const acc = checkingAccounts[i];
           
+          // Check if the account has transactions, including tax transactions
+          let transactions = [];
+          
+          if (acc.transactions && acc.transactions.length > 0) {
+            // Use existing transactions if available
+            transactions = acc.transactions;
+          } else {
+            // If no transactions exist, create them based on balance
+            // For initial deposit of 1600000 with 15% tax
+            const grossAmount = 1600000.00;
+            const taxRate = 0.15;
+            const taxAmount = grossAmount * taxRate;
+            const netAmount = grossAmount - taxAmount;
+            
+            // Create initial deposit transaction
+            transactions.push({
+              date: user.createdAt || new Date(),
+              description: 'Initial Deposit',
+              status: 'Completed',
+              type: 'credit',
+              category: 'Deposit',
+              amount: grossAmount,
+              balance: grossAmount
+            });
+            
+            // Create tax withholding transaction
+            transactions.push({
+              date: user.createdAt || new Date(),
+              description: 'Federal tax withholding (15%)',
+              status: 'Completed',
+              type: 'debit',
+              category: 'Tax',
+              amount: taxAmount,
+              balance: netAmount
+            });
+          }
+          
           const newCheckingAccount = new CheckingAccount({
             userId: userId,
             type: acc.accountName || 'Everyday Checking',
             accountNumber: acc.accountNumber,
             routingNumber: acc.routingNumber || '121000248',
-            balance: acc.balance || 0,
-            availableBalance: acc.balance || 0,
+            balance: acc.balance || 1360000.00, // Net amount after tax
+            availableBalance: acc.balance || 1360000.00,
             isPrimary: i === 0, // First account is primary
             openedDate: user.createdAt || new Date(),
-            // Add some initial transactions based on the balance
-            transactions: [{
-              date: user.createdAt || new Date(),
-              description: 'Initial Deposit',
-              status: 'Completed',
-              type: 'deposit',
-              amount: acc.balance || 0,
-              balance: acc.balance || 0
-            }]
+            transactions: transactions
           });
           
           await newCheckingAccount.save();
@@ -107,24 +136,42 @@ exports.getCheckingAccount = async (req, res) => {
         if (user.accounts && user.accounts.length > 0) {
           const firstAccount = user.accounts[0];
           
+          // For initial deposit of 1600000 with 15% tax
+          const grossAmount = 1600000.00;
+          const taxRate = 0.15;
+          const taxAmount = grossAmount * taxRate;
+          const netAmount = grossAmount - taxAmount;
+          
           // Create a checking account from the first user account
           const newCheckingAccount = new CheckingAccount({
             userId: userId,
             type: firstAccount.accountName || 'Everyday Checking',
             accountNumber: firstAccount.accountNumber || Math.floor(Math.random() * 9000000000) + 1000000000,
             routingNumber: firstAccount.routingNumber || '121000248',
-            balance: firstAccount.balance || 600000,
-            availableBalance: firstAccount.balance || 600000,
+            balance: firstAccount.balance || netAmount,
+            availableBalance: firstAccount.balance || netAmount,
             isPrimary: true,
             openedDate: user.createdAt || new Date(),
-            transactions: [{
-              date: user.createdAt || new Date(),
-              description: 'Initial Deposit',
-              status: 'Completed',
-              type: 'deposit',
-              amount: firstAccount.balance || 600000,
-              balance: firstAccount.balance || 600000
-            }]
+            transactions: [
+              {
+                date: user.createdAt || new Date(),
+                description: 'Initial Deposit',
+                status: 'Completed',
+                type: 'credit',
+                category: 'Deposit',
+                amount: grossAmount,
+                balance: grossAmount
+              },
+              {
+                date: user.createdAt || new Date(),
+                description: 'Federal tax withholding (15%)',
+                status: 'Completed',
+                type: 'debit',
+                category: 'Tax',
+                amount: taxAmount,
+                balance: netAmount
+              }
+            ]
           });
           
           await newCheckingAccount.save();
@@ -140,22 +187,40 @@ exports.getCheckingAccount = async (req, res) => {
           primaryAccount = newCheckingAccount;
         } else {
           // Create a default checking account if no accounts exist
+          // For initial deposit of 1600000 with 15% tax
+          const grossAmount = 1600000.00;
+          const taxRate = 0.15;
+          const taxAmount = grossAmount * taxRate;
+          const netAmount = grossAmount - taxAmount;
+          
           const newCheckingAccount = new CheckingAccount({
             userId: userId,
             type: 'Everyday Checking',
             accountNumber: Math.floor(Math.random() * 9000000000) + 1000000000,
             routingNumber: '121000248',
-            balance: 600000,
-            availableBalance: 600000,
+            balance: netAmount,
+            availableBalance: netAmount,
             isPrimary: true,
-            transactions: [{
-              date: new Date(),
-              description: 'Initial Deposit',
-              status: 'Completed',
-              type: 'deposit',
-              amount: 600000,
-              balance: 600000
-            }]
+            transactions: [
+              {
+                date: new Date(),
+                description: 'Initial Deposit',
+                status: 'Completed',
+                type: 'credit',
+                category: 'Deposit',
+                amount: grossAmount,
+                balance: grossAmount
+              },
+              {
+                date: new Date(),
+                description: 'Federal tax withholding (15%)',
+                status: 'Completed',
+                type: 'debit',
+                category: 'Tax',
+                amount: taxAmount,
+                balance: netAmount
+              }
+            ]
           });
           
           await newCheckingAccount.save();
@@ -221,23 +286,41 @@ exports.getCheckingAccount = async (req, res) => {
             console.log(`Found existing checking account with number: ${matchingAccount.accountNumber}`);
           } else {
             // Create a new checking account only if no account with this number exists
+            // For initial deposit of 1600000 with 15% tax
+            const grossAmount = 1600000.00;
+            const taxRate = 0.15;
+            const taxAmount = grossAmount * taxRate;
+            const netAmount = grossAmount - taxAmount;
+            
             const newCheckingAccount = new CheckingAccount({
               userId: userId,
               type: matchingAccount.accountName || 'Everyday Checking',
               accountNumber: matchingAccount.accountNumber,
               routingNumber: matchingAccount.routingNumber || '121000248',
-              balance: matchingAccount.balance || 0,
-              availableBalance: matchingAccount.balance || 0,
+              balance: matchingAccount.balance || netAmount,
+              availableBalance: matchingAccount.balance || netAmount,
               isPrimary: allUserAccounts.length === 0, // Set as primary if it's the first account
               openedDate: user.createdAt || new Date(),
-              transactions: [{
-                date: user.createdAt || new Date(),
-                description: 'Initial Deposit',
-                status: 'Completed',
-                type: 'deposit',
-                amount: matchingAccount.balance || 0,
-                balance: matchingAccount.balance || 0
-              }]
+              transactions: [
+                {
+                  date: user.createdAt || new Date(),
+                  description: 'Initial Deposit',
+                  status: 'Completed',
+                  type: 'credit',
+                  category: 'Deposit',
+                  amount: grossAmount,
+                  balance: grossAmount
+                },
+                {
+                  date: user.createdAt || new Date(),
+                  description: 'Federal tax withholding (15%)',
+                  status: 'Completed',
+                  type: 'debit',
+                  category: 'Tax',
+                  amount: taxAmount,
+                  balance: netAmount
+                }
+              ]
             });
             
             await newCheckingAccount.save();
@@ -306,7 +389,7 @@ function sendFormattedAccountResponse(checkingAccount, res) {
     transactions: sortedTransactions.map(transaction => ({
       id: transaction._id,
       date: transaction.date,
-      description: transaction.description,
+      description: transaction.description || (transaction.category === 'Tax' ? 'Federal tax withholding (15%)' : ''),
       type: mapTransactionType(transaction.type, transaction.category),
       amount: transaction.amount,
       balance: transaction.balance,
@@ -374,6 +457,8 @@ exports.getCheckingTransactions = async (req, res) => {
           return transaction.type === 'debit' && transaction.category === 'payment';
         } else if (filter === 'purchase') {
           return transaction.type === 'debit' && transaction.category === 'purchase';
+        } else if (filter === 'tax') {
+          return transaction.type === 'debit' && transaction.category === 'Tax';
         }
         return true;
       });
@@ -407,11 +492,11 @@ exports.getCheckingTransactions = async (req, res) => {
     const formattedTransactions = transactions.map(transaction => ({
       id: transaction._id,
       date: transaction.date,
-      description: transaction.description,
+      description: transaction.description || (transaction.category === 'Tax' ? 'Federal tax withholding (15%)' : ''),
       type: mapTransactionType(transaction.type, transaction.category),
       amount: transaction.amount,
       balance: transaction.balance,
-      status: transaction.status
+      status: transaction.status || 'Completed'
     }));
     
     return res.status(200).json({
