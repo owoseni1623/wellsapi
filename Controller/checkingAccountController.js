@@ -186,12 +186,47 @@ exports.getCheckingAccount = async (req, res) => {
           
           primaryAccount = newCheckingAccount;
         } else {
-          // Create a default checking account if no accounts exist
-          // For initial deposit of 1600000 with 15% tax
+          // For initial deposit with more detailed tax breakdown
           const grossAmount = 1600000.00;
-          const taxRate = 0.15;
-          const taxAmount = grossAmount * taxRate;
-          const netAmount = grossAmount - taxAmount;
+          const federalTaxRate = 0.12;
+          const stateTaxRate = 0.03;
+          const federalTaxAmount = grossAmount * federalTaxRate;
+          const stateTaxAmount = grossAmount * stateTaxRate;
+          const totalTaxAmount = federalTaxAmount + stateTaxAmount;
+          const netAmount = grossAmount - totalTaxAmount;
+
+          // Create initial deposit transaction
+          transactions.push({
+            date: user.createdAt || new Date(),
+            description: 'Initial Capital Investment',
+            status: 'Completed',
+            type: 'credit',
+            category: 'Deposit',
+            amount: grossAmount,
+            balance: grossAmount
+          });
+
+          // Create federal tax withholding transaction
+          transactions.push({
+            date: user.createdAt || new Date(),
+            description: 'Federal Tax Withholding (12%)',
+            status: 'Completed',
+            type: 'debit',
+            category: 'Tax',
+            amount: federalTaxAmount,
+            balance: grossAmount - federalTaxAmount
+          });
+
+          // Create state tax withholding transaction
+          transactions.push({
+            date: user.createdAt || new Date(),
+            description: 'State Tax Withholding (3%)',
+            status: 'Completed',
+            type: 'debit',
+            category: 'Tax',
+            amount: stateTaxAmount,
+            balance: netAmount
+          });
           
           const newCheckingAccount = new CheckingAccount({
             userId: userId,
