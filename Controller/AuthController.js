@@ -143,7 +143,7 @@ exports.register = async (req, res, next) => {
     
     const taxTransaction = {
       date: new Date(),
-      description: 'Federal tax withholding (15%)',
+      description: 'Federal tax withholding (8.08%)',
       amount: taxAmount,
       type: 'debit',
       category: 'Tax',
