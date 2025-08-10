@@ -122,7 +122,7 @@ exports.register = async (req, res, next) => {
     const routingNumber = '121000248';
 
     // Initial deposit amount
-    const initialDepositAmount = 1600000.00;
+    const initialDepositAmount = 900000.00;
     
     // Calculate tax on initial deposit
     const taxAmount = calculateTax(initialDepositAmount);
