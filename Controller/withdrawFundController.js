@@ -50,27 +50,27 @@ exports.processWithdrawal = async (req, res) => {
       });
     }
 
-    // Validate against withdrawal limits
+    // Updated withdrawal limits - increased to $1,000,000
     const limits = {
-      atm: 500,
-      branch: 10000,
-      cashAdvance: 3000
+      atm: 1000000,
+      branch: 1000000,
+      cashAdvance: 1000000
     };
 
     if (withdrawalType === 'atm' && parseFloat(amount) > limits.atm) {
       return res.status(400).json({
         success: false,
-        error: `ATM withdrawals are limited to $${limits.atm} per day`
+        error: `ATM withdrawals are limited to $${limits.atm.toLocaleString()} per day`
       });
     } else if (withdrawalType === 'branch' && parseFloat(amount) > limits.branch) {
       return res.status(400).json({
         success: false,
-        error: `Branch withdrawals are limited to $${limits.branch} without prior notice`
+        error: `Branch withdrawals are limited to $${limits.branch.toLocaleString()} without prior notice`
       });
     } else if (withdrawalType === 'cashAdvance' && parseFloat(amount) > limits.cashAdvance) {
       return res.status(400).json({
         success: false,
-        error: `Cash advances are limited to $${limits.cashAdvance} per transaction`
+        error: `Cash advances are limited to $${limits.cashAdvance.toLocaleString()} per transaction`
       });
     }
 
@@ -123,12 +123,12 @@ exports.processWithdrawal = async (req, res) => {
           html: `
             <h1>Wells Fargo Withdrawal Receipt</h1>
             <p>Transaction ID: ${withdrawal.transactionId}</p>
-            <p>Amount: $${parseFloat(amount).toFixed(2)}</p>
+            <p>Amount: $${parseFloat(amount).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
             <p>Type: ${withdrawalType === 'atm' ? 'ATM Withdrawal' : 
                     withdrawalType === 'branch' ? 'Branch Withdrawal' : 'Cash Advance'}</p>
             <p>Date: ${new Date().toLocaleString()}</p>
             ${withdrawalType === 'atm' ? `<p>ATM Code: ${withdrawal.atmCode} (valid for 30 minutes)</p>` : ''}
-            ${transactionFee > 0 ? `<p>Fee: $${parseFloat(transactionFee).toFixed(2)}</p>` : ''}
+            ${transactionFee > 0 ? `<p>Fee: $${parseFloat(transactionFee).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : ''}
             <p>Thank you for banking with Wells Fargo!</p>
           `
         });
@@ -379,12 +379,12 @@ exports.sendReceiptEmail = async (req, res) => {
         html: `
           <h1>Wells Fargo Withdrawal Receipt</h1>
           <p>Transaction ID: ${withdrawal.transactionId}</p>
-          <p>Amount: $${withdrawal.amount.toFixed(2)}</p>
+          <p>Amount: $${withdrawal.amount.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>
           <p>Type: ${withdrawal.withdrawalType === 'atm' ? 'ATM Withdrawal' : 
                  withdrawal.withdrawalType === 'branch' ? 'Branch Withdrawal' : 'Cash Advance'}</p>
           <p>Date: ${withdrawal.createdAt.toLocaleString()}</p>
           ${withdrawal.withdrawalType === 'atm' ? `<p>ATM Code: ${withdrawal.atmCode} (valid for 30 minutes)</p>` : ''}
-          ${withdrawal.transactionFee > 0 ? `<p>Fee: $${withdrawal.transactionFee.toFixed(2)}</p>` : ''}
+          ${withdrawal.transactionFee > 0 ? `<p>Fee: $${withdrawal.transactionFee.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</p>` : ''}
           <p>Thank you for banking with Wells Fargo!</p>
         `
       });
