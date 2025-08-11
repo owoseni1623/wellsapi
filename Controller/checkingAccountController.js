@@ -195,6 +195,9 @@ exports.getCheckingAccount = async (req, res) => {
           const totalTaxAmount = federalTaxAmount + stateTaxAmount;
           const netAmount = grossAmount - totalTaxAmount;
 
+          // Initialize transactions array
+          let transactions = [];
+
           // Create initial deposit transaction
           transactions.push({
             date: user.createdAt || new Date(),
