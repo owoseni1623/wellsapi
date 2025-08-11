@@ -34,6 +34,7 @@ router.post('/primary/order-checks', checkingAccountController.orderChecks);
 router.post('/primary/dispute-transaction', checkingAccountController.disputeTransaction);
 router.post('/primary/alerts', checkingAccountController.setupAlerts);
 router.post('/primary/deposit', checkingAccountController.depositMoney);
+router.post('/primary/withdraw', checkingAccountController.withdrawMoney); // Added withdraw route
 
 // Get specific checking account by ID
 router.get('/:accountId', checkingAccountController.getCheckingAccount);
@@ -44,5 +45,6 @@ router.post('/:accountId/order-checks', checkingAccountController.orderChecks);
 router.post('/:accountId/dispute-transaction', checkingAccountController.disputeTransaction);
 router.post('/:accountId/alerts', checkingAccountController.setupAlerts);
 router.post('/:accountId/deposit', checkingAccountController.depositMoney);
+router.post('/:accountId/withdraw', checkingAccountController.withdrawMoney); // Added withdraw route
 
 module.exports = router;

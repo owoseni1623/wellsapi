@@ -438,6 +438,124 @@ function sendFormattedAccountResponse(checkingAccount, res) {
   });
 }
 
+
+/**
+ * @desc    Withdraw money from checking account
+ * @route   POST /api/checking/:accountId/withdraw
+ * @access  Private
+ */
+exports.withdrawMoney = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    const accountId = req.params.accountId;
+    const { amount, description, approvalCode } = req.body;
+    
+    console.log(`Processing withdrawal for account ${accountId}, amount: ${amount}`);
+    
+    // Validate amount
+    if (!amount || isNaN(amount) || amount <= 0) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please provide a valid positive amount'
+      });
+    }
+    
+    // Validate approval code
+    if (!approvalCode) {
+      return res.status(400).json({
+        success: false,
+        error: 'Transaction Approval Code is required to complete this withdrawal'
+      });
+    }
+    
+    // Find the specific account using proper methods
+    let account;
+    
+    // Try to find by MongoDB ObjectId first
+    if (mongoose.Types.ObjectId.isValid(accountId)) {
+      account = await CheckingAccount.findOne({
+        _id: accountId,
+        userId: userId
+      });
+    }
+    
+    // If not found by ObjectId, try finding by account number
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        accountNumber: accountId,
+        userId: userId
+      });
+    }
+    
+    // If still not found, try to get primary account
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        userId: userId,
+        isPrimary: true
+      });
+    }
+    
+    // If still no account found, return error
+    if (!account) {
+      return res.status(404).json({
+        success: false,
+        error: 'Checking account not found or not associated with this user'
+      });
+    }
+    
+    // Parse amount to ensure it's a number
+    const withdrawalAmount = parseFloat(amount);
+    
+    // Check if sufficient balance
+    if (account.balance < withdrawalAmount) {
+      return res.status(400).json({
+        success: false,
+        error: 'Insufficient funds for this withdrawal'
+      });
+    }
+    
+    // Update balances - SUBTRACT the withdrawal amount
+    const oldBalance = account.balance;
+    account.balance -= withdrawalAmount;
+    account.availableBalance -= withdrawalAmount;
+    
+    // Create transaction record
+    const newTransaction = {
+      date: new Date(),
+      description: description || 'Withdrawal',
+      status: 'Completed',
+      type: 'debit',
+      category: 'withdrawal',
+      amount: withdrawalAmount,
+      balance: account.balance
+    };
+    
+    // Add transaction to account
+    account.transactions.push(newTransaction);
+    
+    // Save the updated account
+    await account.save();
+    
+    console.log(`Withdrawal completed: $${withdrawalAmount} withdrawn from account ${account.accountNumber}`);
+    
+    // Return the updated account information
+    return res.status(200).json({
+      success: true,
+      data: {
+        newBalance: account.balance,
+        transaction: newTransaction
+      },
+      message: `Successfully withdrew $${withdrawalAmount} from account`
+    });
+  } catch (error) {
+    console.error('Error withdrawing money:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Server error while processing withdrawal'
+    });
+  }
+};
+
 /**
  * @desc    Get transactions for specific checking account
  * @route   GET /api/checking/:accountId/transactions
