@@ -17,7 +17,7 @@ exports.getCheckingAccount = async (req, res) => {
    
     console.log(`Fetching account for userId: ${userId}`);
     
-    // Check if user exists and has account information in the User model
+    // Check if user exists
     const user = await mongoose.model('User').findById(userId);
     if (!user) {
       return res.status(404).json({
@@ -26,14 +26,14 @@ exports.getCheckingAccount = async (req, res) => {
       });
     }
    
-    // DEBUG: List all checking accounts for this user from CheckingAccount collection
+    // Get all checking accounts for this user from CheckingAccount collection
     let allUserAccounts = await CheckingAccount.find({ userId: userId });
     console.log(`User has ${allUserAccounts.length} checking accounts in CheckingAccount collection`);
     
-    // If user has no checking accounts in CheckingAccount collection, but has accounts in User model
-    // then create checking account from User model data
+    // ONLY create new accounts if user has NO checking accounts in CheckingAccount collection
+    // AND has accounts in User model
     if (allUserAccounts.length === 0 && user.accounts && user.accounts.length > 0) {
-      console.log('User has accounts in User model but none in CheckingAccount collection. Creating...');
+      console.log('User has accounts in User model but none in CheckingAccount collection. Creating ONCE...');
       
       // Find checking accounts in user.accounts array
       const checkingAccounts = user.accounts.filter(acc => 
@@ -42,25 +42,33 @@ exports.getCheckingAccount = async (req, res) => {
       );
       
       if (checkingAccounts.length > 0) {
-        // Create checking accounts from user.accounts data
+        // Create checking accounts from user.accounts data ONCE
         for (let i = 0; i < checkingAccounts.length; i++) {
           const acc = checkingAccounts[i];
           
-          // Check if the account has transactions, including tax transactions
+          // Check if an account with this number already exists to prevent duplicates
+          const existingAccount = await CheckingAccount.findOne({
+            accountNumber: acc.accountNumber
+          });
+          
+          if (existingAccount) {
+            console.log(`Account ${acc.accountNumber} already exists, skipping creation`);
+            continue;
+          }
+          
+          // Create initial transactions only if account doesn't exist
           let transactions = [];
           
           if (acc.transactions && acc.transactions.length > 0) {
             // Use existing transactions if available
             transactions = acc.transactions;
           } else {
-            // If no transactions exist, create them based on balance
-            // For initial deposit of 1600000 with 15% tax
+            // Create initial deposit and tax transactions ONLY ONCE
             const grossAmount = 1600000.00;
             const taxRate = 0.15;
             const taxAmount = grossAmount * taxRate;
             const netAmount = grossAmount - taxAmount;
             
-            // Create initial deposit transaction
             transactions.push({
               date: user.createdAt || new Date(),
               description: 'Initial Deposit',
@@ -71,7 +79,6 @@ exports.getCheckingAccount = async (req, res) => {
               balance: grossAmount
             });
             
-            // Create tax withholding transaction
             transactions.push({
               date: user.createdAt || new Date(),
               description: 'Federal tax withholding (15%)',
@@ -98,7 +105,7 @@ exports.getCheckingAccount = async (req, res) => {
           await newCheckingAccount.save();
           console.log(`Created checking account ${newCheckingAccount.accountNumber} for user ${user.email}`);
           
-          // If user has checkingAccounts array, update it
+          // Update user with reference to new checking accounts
           if (!user.checkingAccounts) {
             user.checkingAccounts = [];
           }
@@ -109,12 +116,12 @@ exports.getCheckingAccount = async (req, res) => {
         await user.save();
         console.log('Updated user with references to new checking accounts');
         
-        // Re-fetch the accounts after creation - FIXED: used let declaration above
+        // Re-fetch the accounts after creation
         allUserAccounts = await CheckingAccount.find({ userId: userId });
       }
     }
     
-    // Special handling for primary account
+    // Handle special case for primary account
     if (accountId === 'primary') {
       // First try to find a primary account
       let primaryAccount = await CheckingAccount.findOne({
@@ -131,155 +138,80 @@ exports.getCheckingAccount = async (req, res) => {
         await primaryAccount.save();
       }
      
+      // ONLY create new account if absolutely no accounts exist
       if (!primaryAccount) {
-        // If still no account, check if we need to create one from user.accounts data
-        if (user.accounts && user.accounts.length > 0) {
-          const firstAccount = user.accounts[0];
-          
-          // For initial deposit of 1600000 with 15% tax
-          const grossAmount = 1600000.00;
-          const taxRate = 0.15;
-          const taxAmount = grossAmount * taxRate;
-          const netAmount = grossAmount - taxAmount;
-          
-          // Create a checking account from the first user account
-          const newCheckingAccount = new CheckingAccount({
-            userId: userId,
-            type: firstAccount.accountName || 'Everyday Checking',
-            accountNumber: firstAccount.accountNumber || Math.floor(Math.random() * 9000000000) + 1000000000,
-            routingNumber: firstAccount.routingNumber || '121000248',
-            balance: firstAccount.balance || netAmount,
-            availableBalance: firstAccount.balance || netAmount,
-            isPrimary: true,
-            openedDate: user.createdAt || new Date(),
-            transactions: [
-              {
-                date: user.createdAt || new Date(),
-                description: 'Initial Deposit',
-                status: 'Completed',
-                type: 'credit',
-                category: 'Deposit',
-                amount: grossAmount,
-                balance: grossAmount
-              },
-              {
-                date: user.createdAt || new Date(),
-                description: 'Federal tax withholding (15%)',
-                status: 'Completed',
-                type: 'debit',
-                category: 'Tax',
-                amount: taxAmount,
-                balance: netAmount
-              }
-            ]
-          });
-          
-          await newCheckingAccount.save();
-          console.log(`Created primary checking account for user ${user.email}`);
-          
-          // Update user reference
-          if (!user.checkingAccounts) {
-            user.checkingAccounts = [];
-          }
-          user.checkingAccounts.push(newCheckingAccount._id);
-          await user.save();
-          
-          primaryAccount = newCheckingAccount;
-        } else {
-          // For initial deposit with more detailed tax breakdown
-          const grossAmount = 1600000.00;
-          const federalTaxRate = 0.12;
-          const stateTaxRate = 0.03;
-          const federalTaxAmount = grossAmount * federalTaxRate;
-          const stateTaxAmount = grossAmount * stateTaxRate;
-          const totalTaxAmount = federalTaxAmount + stateTaxAmount;
-          const netAmount = grossAmount - totalTaxAmount;
+        console.log('No accounts exist, creating default account...');
+        
+        const grossAmount = 1600000.00;
+        const federalTaxRate = 0.12;
+        const stateTaxRate = 0.03;
+        const federalTaxAmount = grossAmount * federalTaxRate;
+        const stateTaxAmount = grossAmount * stateTaxRate;
+        const totalTaxAmount = federalTaxAmount + stateTaxAmount;
+        const netAmount = grossAmount - totalTaxAmount;
 
-          // Initialize transactions array
-          let transactions = [];
+        let transactions = [];
 
-          // Create initial deposit transaction
-          transactions.push({
-            date: user.createdAt || new Date(),
-            description: 'Initial Capital Investment',
-            status: 'Completed',
-            type: 'credit',
-            category: 'Deposit',
-            amount: grossAmount,
-            balance: grossAmount
-          });
+        transactions.push({
+          date: user.createdAt || new Date(),
+          description: 'Initial Capital Investment',
+          status: 'Completed',
+          type: 'credit',
+          category: 'Deposit',
+          amount: grossAmount,
+          balance: grossAmount
+        });
 
-          // Create federal tax withholding transaction
-          transactions.push({
-            date: user.createdAt || new Date(),
-            description: 'Federal Tax Withholding (12%)',
-            status: 'Completed',
-            type: 'debit',
-            category: 'Tax',
-            amount: federalTaxAmount,
-            balance: grossAmount - federalTaxAmount
-          });
+        transactions.push({
+          date: user.createdAt || new Date(),
+          description: 'Federal Tax Withholding (12%)',
+          status: 'Completed',
+          type: 'debit',
+          category: 'Tax',
+          amount: federalTaxAmount,
+          balance: grossAmount - federalTaxAmount
+        });
 
-          // Create state tax withholding transaction
-          transactions.push({
-            date: user.createdAt || new Date(),
-            description: 'State Tax Withholding (3%)',
-            status: 'Completed',
-            type: 'debit',
-            category: 'Tax',
-            amount: stateTaxAmount,
-            balance: netAmount
-          });
-          
-          const newCheckingAccount = new CheckingAccount({
-            userId: userId,
-            type: 'Everyday Checking',
-            accountNumber: Math.floor(Math.random() * 9000000000) + 1000000000,
-            routingNumber: '121000248',
-            balance: netAmount,
-            availableBalance: netAmount,
-            isPrimary: true,
-            transactions: [
-              {
-                date: new Date(),
-                description: 'Initial Deposit',
-                status: 'Completed',
-                type: 'credit',
-                category: 'Deposit',
-                amount: grossAmount,
-                balance: grossAmount
-              },
-              {
-                date: new Date(),
-                description: 'Federal tax withholding (15%)',
-                status: 'Completed',
-                type: 'debit',
-                category: 'Tax',
-                amount: taxAmount,
-                balance: netAmount
-              }
-            ]
-          });
-          
-          await newCheckingAccount.save();
-          console.log(`Created default checking account for user ${user.email}`);
-          
-          // Update user reference
-          if (!user.checkingAccounts) {
-            user.checkingAccounts = [];
-          }
-          user.checkingAccounts.push(newCheckingAccount._id);
-          await user.save();
-          
-          primaryAccount = newCheckingAccount;
+        transactions.push({
+          date: user.createdAt || new Date(),
+          description: 'State Tax Withholding (3%)',
+          status: 'Completed',
+          type: 'debit',
+          category: 'Tax',
+          amount: stateTaxAmount,
+          balance: netAmount
+        });
+        
+        const newCheckingAccount = new CheckingAccount({
+          userId: userId,
+          type: 'Everyday Checking',
+          accountNumber: Math.floor(Math.random() * 9000000000) + 1000000000,
+          routingNumber: '121000248',
+          balance: netAmount,
+          availableBalance: netAmount,
+          isPrimary: true,
+          openedDate: user.createdAt || new Date(),
+          transactions: transactions
+        });
+        
+        await newCheckingAccount.save();
+        console.log(`Created default checking account for user ${user.email}`);
+        
+        // Update user reference
+        if (!user.checkingAccounts) {
+          user.checkingAccounts = [];
         }
+        user.checkingAccounts.push(newCheckingAccount._id);
+        await user.save();
+        
+        primaryAccount = newCheckingAccount;
       }
      
-      // Send response with primary account
+      // Send response with primary account (preserving all existing transactions)
       return sendFormattedAccountResponse(primaryAccount, res);
     }
    
-    // For specific account ID
+    // For specific account ID, find existing account WITHOUT recreating
     let checkingAccount;
     try {
       // First try to find by MongoDB ObjectId
@@ -304,27 +236,27 @@ exports.getCheckingAccount = async (req, res) => {
       throw lookupError;
     }
    
+    // CRITICAL: DO NOT recreate existing accounts or overwrite transactions
     if (!checkingAccount) {
-      // If we couldn't find the specific account, but there is a matching account in user.accounts
-      if (user.accounts && user.accounts.length > 0) {
+      // Only check user.accounts if no CheckingAccount exists AND no accounts exist in CheckingAccount collection
+      if (allUserAccounts.length === 0 && user.accounts && user.accounts.length > 0) {
         const matchingAccount = user.accounts.find(acc => 
           acc.accountNumber === accountId || 
           (mongoose.Types.ObjectId.isValid(accountId) && acc._id && acc._id.toString() === accountId)
         );
         
         if (matchingAccount) {
-          // Check if an account with this number already exists
+          // Check if an account with this number already exists in CheckingAccount collection
           const existingAccountWithNumber = await CheckingAccount.findOne({
             accountNumber: matchingAccount.accountNumber
           });
           
           if (existingAccountWithNumber) {
-            // If an account with this number already exists, use it instead of creating a new one
+            // Use existing account, don't create new one
             checkingAccount = existingAccountWithNumber;
             console.log(`Found existing checking account with number: ${matchingAccount.accountNumber}`);
           } else {
-            // Create a new checking account only if no account with this number exists
-            // For initial deposit of 1600000 with 15% tax
+            // Create new account only if it truly doesn't exist
             const grossAmount = 1600000.00;
             const taxRate = 0.15;
             const taxAmount = grossAmount * taxRate;
@@ -337,7 +269,7 @@ exports.getCheckingAccount = async (req, res) => {
               routingNumber: matchingAccount.routingNumber || '121000248',
               balance: matchingAccount.balance || netAmount,
               availableBalance: matchingAccount.balance || netAmount,
-              isPrimary: allUserAccounts.length === 0, // Set as primary if it's the first account
+              isPrimary: allUserAccounts.length === 0,
               openedDate: user.createdAt || new Date(),
               transactions: [
                 {
@@ -391,7 +323,7 @@ exports.getCheckingAccount = async (req, res) => {
       }
     }
    
-    // Send response with the found account
+    // Send response with the found account (preserving ALL existing transactions)
     return sendFormattedAccountResponse(checkingAccount, res);
    
   } catch (error) {
@@ -405,12 +337,12 @@ exports.getCheckingAccount = async (req, res) => {
 
 // Helper function to format and send account response
 function sendFormattedAccountResponse(checkingAccount, res) {
-  // Format transactions by date (newest first)
+  // Format transactions by date (newest first) - PRESERVE ALL TRANSACTIONS
   const sortedTransactions = checkingAccount.transactions
     ? checkingAccount.transactions.sort((a, b) => new Date(b.date) - new Date(a.date))
     : [];
 
-  // Make sure we're including ALL transactions regardless of category
+  // Include ALL transactions regardless of category
   const formattedAccount = {
     id: checkingAccount._id,
     accountNumber: maskAccountNumber(checkingAccount.accountNumber),
@@ -440,7 +372,6 @@ function sendFormattedAccountResponse(checkingAccount, res) {
     data: formattedAccount
   });
 }
-
 
 /**
  * @desc    Withdraw money from checking account
@@ -570,26 +501,24 @@ exports.getCheckingTransactions = async (req, res) => {
     const accountId = req.params.accountId;
     const { filter, dateRange } = req.query;
     
-    // Find the specific checking account that belongs to the user
-    const user = await User.findById(userId).populate('checkingAccounts');
+    // Find the checking account directly (no need to check user.checkingAccounts)
+    let account;
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
+    // Try to find by MongoDB ObjectId first
+    if (mongoose.Types.ObjectId.isValid(accountId)) {
+      account = await CheckingAccount.findOne({
+        _id: accountId,
+        userId: userId
       });
     }
     
-    // Verify that the account belongs to the user
-    if (!user.checkingAccounts || !user.checkingAccounts.some(account => account._id.toString() === accountId)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Checking account not found or not associated with this user'
+    // If not found by ObjectId, try finding by account number
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        accountNumber: accountId,
+        userId: userId
       });
     }
-    
-    // Get the specified account
-    const account = await CheckingAccount.findById(accountId);
     
     if (!account) {
       return res.status(404).json({
@@ -598,7 +527,7 @@ exports.getCheckingTransactions = async (req, res) => {
       });
     }
     
-    // Get all transactions
+    // Get all transactions (preserve all existing transactions)
     let transactions = [...account.transactions];
     
     // Apply type filter
@@ -680,26 +609,24 @@ exports.downloadStatement = async (req, res) => {
     const accountId = req.params.accountId;
     const { period, format } = req.body;
     
-    // Find user and verify account ownership
-    const user = await User.findById(userId).populate('checkingAccounts');
+    // Find the checking account directly
+    let account;
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
+    // Try to find by MongoDB ObjectId first
+    if (mongoose.Types.ObjectId.isValid(accountId)) {
+      account = await CheckingAccount.findOne({
+        _id: accountId,
+        userId: userId
       });
     }
     
-    // Verify that the account belongs to the user
-    if (!user.checkingAccounts || !user.checkingAccounts.some(account => account._id.toString() === accountId)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Checking account not found or not associated with this user'
+    // If not found by ObjectId, try finding by account number
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        accountNumber: accountId,
+        userId: userId
       });
     }
-    
-    // Get the specific account
-    const account = await CheckingAccount.findById(accountId);
     
     if (!account) {
       return res.status(404).json({
@@ -750,26 +677,24 @@ exports.setupAutoPay = async (req, res) => {
       });
     }
     
-    // Find user and verify account ownership
-    const user = await User.findById(userId).populate('checkingAccounts');
+    // Find the checking account directly
+    let account;
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
+    // Try to find by MongoDB ObjectId first
+    if (mongoose.Types.ObjectId.isValid(accountId)) {
+      account = await CheckingAccount.findOne({
+        _id: accountId,
+        userId: userId
       });
     }
     
-    // Verify that the account belongs to the user
-    if (!user.checkingAccounts || !user.checkingAccounts.some(account => account._id.toString() === accountId)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Checking account not found or not associated with this user'
+    // If not found by ObjectId, try finding by account number
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        accountNumber: accountId,
+        userId: userId
       });
     }
-    
-    // Get the specific account
-    const account = await CheckingAccount.findById(accountId);
     
     if (!account) {
       return res.status(404).json({
@@ -788,6 +713,10 @@ exports.setupAutoPay = async (req, res) => {
       status: 'Active',
       createdAt: new Date()
     };
+    
+    if (!account.autoPayments) {
+      account.autoPayments = [];
+    }
     
     account.autoPayments.push(newAutoPay);
     await account.save();
@@ -824,26 +753,24 @@ exports.orderChecks = async (req, res) => {
       });
     }
     
-    // Find user and verify account ownership
-    const user = await User.findById(userId).populate('checkingAccounts');
+    // Find the checking account directly
+    let account;
     
-    if (!user) {
-      return res.status(404).json({
-        success: false,
-        error: 'User not found'
+    // Try to find by MongoDB ObjectId first
+    if (mongoose.Types.ObjectId.isValid(accountId)) {
+      account = await CheckingAccount.findOne({
+        _id: accountId,
+        userId: userId
       });
     }
     
-    // Verify that the account belongs to the user
-    if (!user.checkingAccounts || !user.checkingAccounts.some(account => account._id.toString() === accountId)) {
-      return res.status(404).json({
-        success: false,
-        error: 'Checking account not found or not associated with this user'
+    // If not found by ObjectId, try finding by account number
+    if (!account) {
+      account = await CheckingAccount.findOne({
+        accountNumber: accountId,
+        userId: userId
       });
     }
-    
-    // Get the specific account
-    const account = await CheckingAccount.findById(accountId);
     
     if (!account) {
       return res.status(404).json({
@@ -862,6 +789,10 @@ exports.orderChecks = async (req, res) => {
       orderDate: new Date(),
       estimatedDelivery: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000) // 14 days from now
     };
+    
+    if (!account.checkOrders) {
+      account.checkOrders = [];
+    }
     
     account.checkOrders.push(newOrder);
     await account.save();
