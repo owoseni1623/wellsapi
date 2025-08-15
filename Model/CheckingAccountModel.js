@@ -29,7 +29,7 @@ const transactionSchema = new mongoose.Schema({
   },
   category: {
     type: String,
-    enum: ['deposit', 'withdrawal', 'payment', 'purchase', 'transfer', 'fee', null],
+    enum: ['deposit', 'withdrawal', 'payment', 'purchase', 'transfer', 'fee', 'tax', 'Deposit', 'Tax', null],
     default: null
   }
 });
