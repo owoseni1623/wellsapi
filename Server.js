@@ -57,11 +57,11 @@ app.use('/api/auth/register', (req, res, next) => {
 // Add Vercel frontend URL to allowed origins
 const allowedOrigins = process.env.CORS_ORIGIN ? 
   process.env.CORS_ORIGIN.split(',') : 
-  ['https://wells-gilt.vercel.app'];
+  ['wells-fargo-seven.vercel.app'];
 
 // Ensure Vercel frontend is included if not already
-if (!allowedOrigins.includes('https://wells-gilt.vercel.app')) {
-  allowedOrigins.push('https://wells-gilt.vercel.app');
+if (!allowedOrigins.includes('wells-fargo-seven.vercel.app')) {
+  allowedOrigins.push('wells-fargo-seven.vercel.app');
 }
 
 // Log CORS configuration for debugging
