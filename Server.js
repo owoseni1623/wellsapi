@@ -60,8 +60,8 @@ const allowedOrigins = process.env.CORS_ORIGIN ?
   ['wells-fargo-seven.vercel.app'];
 
 // Ensure Vercel frontend is included if not already
-if (!allowedOrigins.includes('wells-fargo-seven.vercel.app')) {
-  allowedOrigins.push('wells-fargo-seven.vercel.app');
+if (!allowedOrigins.includes('https://wellsfargoca.net/')) {
+  allowedOrigins.push('https://wellsfargoca.net/');
 }
 
 // Log CORS configuration for debugging
