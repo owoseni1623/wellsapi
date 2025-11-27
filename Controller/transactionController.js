@@ -25,7 +25,7 @@ const mockBanks = [
 
 exports.getAllBanks = async (req, res) => {
   try {
-    // Return mock bank data
+    console.log('GET /api/transfers/banks - Fetching banks');
     res.status(200).json({
       success: true,
       count: mockBanks.length,
@@ -42,6 +42,7 @@ exports.getAllBanks = async (req, res) => {
 
 exports.getUserAccounts = async (req, res) => {
   try {
+    console.log('GET /api/transfers/accounts - User:', req.user.id);
     const userId = req.user.id;
     
     const user = await User.findById(userId).select('accounts');
@@ -70,10 +71,7 @@ exports.getUserAccounts = async (req, res) => {
 
 exports.getSavedRecipients = async (req, res) => {
   try {
-    const userId = req.user.id;
-    
-    // For now, return empty array since you don't have SavedRecipient model
-    // You can implement this later
+    console.log('GET /api/transfers/recipients - User:', req.user.id);
     res.status(200).json({
       success: true,
       count: 0,
@@ -90,6 +88,9 @@ exports.getSavedRecipients = async (req, res) => {
 
 exports.createTransfer = async (req, res) => {
   try {
+    console.log('POST /api/transfers/transfer - Request body:', req.body);
+    console.log('User ID:', req.user.id);
+    
     const userId = req.user.id;
     
     const {
@@ -101,10 +102,11 @@ exports.createTransfer = async (req, res) => {
       emailReceipt,
       emailAddress,
       transferDate,
-      transferFrequency,
-      recurringEndDate,
-      externalAccount,
-      wireTransfer
+      bank,
+      routingNumber,
+      accountNumber,
+      accountHolderName,
+      accountType
     } = req.body;
 
     // Validate amount
@@ -128,6 +130,8 @@ exports.createTransfer = async (req, res) => {
     // Find source account
     const sourceAccount = user.accounts.find(acc => acc.accountNumber === fromAccount);
     if (!sourceAccount) {
+      console.log('Source account not found. Looking for:', fromAccount);
+      console.log('Available accounts:', user.accounts.map(a => a.accountNumber));
       return res.status(404).json({
         success: false,
         error: 'Source account not found'
@@ -163,14 +167,14 @@ exports.createTransfer = async (req, res) => {
       }
 
       // Execute transfer
-      sourceAccount.balance -= totalAmount;
+      sourceAccount.balance -= transferAmount;
       destinationAccount.balance += transferAmount;
 
       // Add transactions
       sourceAccount.transactions.push({
         date: transferDateObj,
         description: memo || `Transfer to ${destinationAccount.accountName}`,
-        amount: totalAmount,
+        amount: transferAmount,
         type: 'debit',
         category: 'Transfer',
         balance: sourceAccount.balance
@@ -186,6 +190,8 @@ exports.createTransfer = async (req, res) => {
       });
 
       await user.save();
+
+      console.log('Internal transfer completed:', confirmationNumber);
 
       return res.status(201).json({
         success: true,
@@ -210,13 +216,16 @@ exports.createTransfer = async (req, res) => {
 
     } else {
       // External or wire transfer
-      // For now, deduct from source account and mark as pending
       sourceAccount.balance -= totalAmount;
+
+      const transferDescription = transferType === 'external' 
+        ? `External transfer to ${bank || 'external bank'} (${accountNumber.slice(-4)})`
+        : `${transferType === 'wire' ? 'Wire' : 'External'} transfer`;
 
       sourceAccount.transactions.push({
         date: transferDateObj,
-        description: memo || `${transferType === 'wire' ? 'Wire' : 'External'} transfer`,
-        amount: totalAmount,
+        description: memo || transferDescription,
+        amount: transferAmount,
         type: 'debit',
         category: 'Transfer',
         balance: sourceAccount.balance
@@ -235,6 +244,8 @@ exports.createTransfer = async (req, res) => {
 
       await user.save();
 
+      console.log('External/Wire transfer completed:', confirmationNumber);
+
       return res.status(201).json({
         success: true,
         message: 'Transfer initiated successfully. Processing may take 1-3 business days.',
@@ -245,7 +256,13 @@ exports.createTransfer = async (req, res) => {
           fee: fee,
           total: totalAmount,
           transferType: transferType,
-          transactionRef: confirmationNumber
+          transactionRef: confirmationNumber,
+          externalAccount: {
+            bank: bank,
+            accountNumber: accountNumber,
+            routingNumber: routingNumber,
+            accountHolderName: accountHolderName
+          }
         }
       });
     }
@@ -262,9 +279,8 @@ exports.createTransfer = async (req, res) => {
 exports.verifyTransfer = async (req, res) => {
   try {
     const { transferId, verificationCode } = req.body;
+    console.log('POST /api/transfers/verify - Transfer ID:', transferId);
     
-    // For now, return success
-    // You can implement proper verification logic later
     res.status(200).json({
       success: true,
       message: 'Transfer verified successfully',
@@ -286,8 +302,8 @@ exports.verifyTransfer = async (req, res) => {
 exports.getTransferStatus = async (req, res) => {
   try {
     const { transferId } = req.params;
+    console.log('GET /api/transfers/status/:id - Transfer ID:', transferId);
     
-    // Mock response for now
     res.status(200).json({
       success: true,
       data: {
@@ -315,7 +331,6 @@ exports.getAllTransfers = async (req, res) => {
       });
     }
     
-    // Return empty array for now
     res.status(200).json({
       success: true,
       count: 0,
