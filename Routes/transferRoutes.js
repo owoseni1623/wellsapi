@@ -4,7 +4,7 @@ const router = express.Router();
 const transferController = require('../Controller/transferController');
 const { protect, adminOnly } = require('../Middleware/authMiddleware');
 
-// Public routes
+// Public routes - Make sure banks route doesn't require auth if frontend calls it before login
 router.get('/banks', transferController.getAllBanks);
 
 // Protected routes (requires authentication)

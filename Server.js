@@ -37,7 +37,7 @@ const profileRoutes = require('./Routes/profileRoutes');
 
 const app = express();
 
-// Body parser
+// Body parser - MUST BE BEFORE ROUTES
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
@@ -46,6 +46,55 @@ if (process.env.NODE_ENV === 'development') {
   app.use(morgan('dev'));
 }
 
+// Build allowed origins list
+const allowedOrigins = [
+  'https://wellsfargoca.net',
+  'https://wells-fargo-seven.vercel.app',
+  'http://localhost:3000',
+  'http://localhost:5173'
+];
+
+// Add additional origins from env if specified
+if (process.env.CORS_ORIGIN) {
+  const envOrigins = process.env.CORS_ORIGIN.split(',').map(origin => origin.trim());
+  envOrigins.forEach(origin => {
+    if (!allowedOrigins.includes(origin)) {
+      allowedOrigins.push(origin);
+    }
+  });
+}
+
+// Log CORS configuration for debugging
+console.log('CORS allowed origins:', allowedOrigins);
+
+// Enable CORS - MUST BE BEFORE ROUTES
+app.use(cors({
+  origin: function(origin, callback) {
+    // Allow requests with no origin (mobile apps, Postman, curl, etc.)
+    if (!origin) {
+      return callback(null, true);
+    }
+    
+    // Check if origin is in allowed list
+    if (allowedOrigins.includes(origin) || allowedOrigins.includes('*')) {
+      callback(null, true);
+    } else {
+      console.log('CORS origin not in whitelist:', origin);
+      // In production, you might want to allow anyway for now
+      callback(null, true); // Change to callback(new Error('Not allowed by CORS')) to block
+    }
+  },
+  credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'X-Requested-With'],
+  exposedHeaders: ['Content-Length', 'X-JSON'],
+  maxAge: 600 // Cache preflight for 10 minutes
+}));
+
+// Handle preflight requests - MUST BE BEFORE ROUTES
+app.options('*', cors());
+
+// Name middleware for registration
 app.use('/api/auth/register', (req, res, next) => {
   if (req.body.firstName && req.body.lastName) {
     req.body.name = `${req.body.firstName} ${req.body.lastName}`;
@@ -53,41 +102,6 @@ app.use('/api/auth/register', (req, res, next) => {
   }
   next();
 });
-
-// Add Vercel frontend URL to allowed origins
-const allowedOrigins = process.env.CORS_ORIGIN ? 
-  process.env.CORS_ORIGIN.split(',') : 
-  ['wells-fargo-seven.vercel.app'];
-
-// Ensure Vercel frontend is included if not already
-if (!allowedOrigins.includes('https://wellsfargoca.net/')) {
-  allowedOrigins.push('https://wellsfargoca.net/');
-}
-
-// Log CORS configuration for debugging
-console.log('CORS allowed origins:', allowedOrigins);
-
-// Enable CORS with proper credential handling
-app.use(cors({
-  origin: function(origin, callback) {
-    // Allow requests with no origin (like mobile apps or curl requests)
-    if (!origin) return callback(null, true);
-    
-    if (allowedOrigins.indexOf(origin) !== -1 || allowedOrigins.includes('*')) {
-      callback(null, true);
-    } else {
-      console.log('CORS blocked origin:', origin);
-      callback(null, true); // Allow anyway in production, but log it
-    }
-  },
-  credentials: true,
-  methods: process.env.CORS_METHODS ? 
-    process.env.CORS_METHODS.split(',') : 
-    ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
-  allowedHeaders: process.env.ALLOWED_HEADERS ? 
-    process.env.ALLOWED_HEADERS.split(',') : 
-    ['Content-Type', 'Authorization', 'x-auth-token']
-}));
 
 // Mount routers
 app.use('/api/auth', authRoutes);
@@ -115,8 +129,13 @@ app.get('/', (req, res) => {
   res.status(200).json({ success: true, message: 'API is running' });
 });
 
-// Preflight route for CORS issues
-app.options('*', cors());
+// 404 handler for undefined routes
+app.use((req, res, next) => {
+  res.status(404).json({
+    success: false,
+    error: `Route ${req.method} ${req.originalUrl} not found`
+  });
+});
 
 // Custom error handler - must be after routes
 app.use(errorHandler);

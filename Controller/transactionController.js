@@ -1,279 +1,361 @@
-const Transaction = require('../Model/transactionModel');
-const SavingsAccount = require('../Model/CheckingAccountModel');
+// controllers/transferController.js
+const User = require('../Model/UserModel');
+const crypto = require('crypto');
 
+// Generate a random confirmation number
+const generateConfirmationNumber = () => {
+  const timestamp = new Date().getTime().toString().slice(-8);
+  const random = crypto.randomBytes(2).toString('hex');
+  return `TRN-${timestamp}-${random}`;
+};
 
+// Mock bank data (since you don't have a Bank model)
+const mockBanks = [
+  { _id: '1', name: 'Wells Fargo', routingNumber: '121000248' },
+  { _id: '2', name: 'Bank of America', routingNumber: '026009593' },
+  { _id: '3', name: 'Chase Bank', routingNumber: '021000021' },
+  { _id: '4', name: 'Citibank', routingNumber: '021000089' },
+  { _id: '5', name: 'US Bank', routingNumber: '091000022' },
+  { _id: '6', name: 'PNC Bank', routingNumber: '043000096' },
+  { _id: '7', name: 'Capital One', routingNumber: '065000090' },
+  { _id: '8', name: 'TD Bank', routingNumber: '031201360' },
+  { _id: '9', name: 'BB&T', routingNumber: '053000196' },
+  { _id: '10', name: 'SunTrust Bank', routingNumber: '061000104' }
+];
 
-exports.getAccountTransactions = async (req, res) => {
+exports.getAllBanks = async (req, res) => {
   try {
-    const { accountId } = req.params;
-    
-    // Find transactions for this account
-    // This approach depends on how your data is structured
-    // Option 1: If transactions are directly linked to accounts
-    const transactions = await Transaction.find({ accountId: accountId })
-      .sort({ date: -1 })
-      .limit(100); // Limit to recent transactions
-    
-    // Format transactions for frontend
-    const formattedTransactions = transactions.map(transaction => ({
-      id: transaction._id,
-      date: transaction.date,
-      formattedDate: new Date(transaction.date).toLocaleDateString('en-US'),
-      description: transaction.description,
-      type: transaction.type,
-      amount: transaction.amount,
-      status: transaction.status,
-      // Add these fields with defaults if they don't exist in your model
-      merchantType: transaction.category || 'MERCHANT_RETAIL',
-      cardLast4: transaction.cardLast4 || '0000',
-      postedDate: transaction.createdAt,
-      canBeDisputed: (new Date() - new Date(transaction.date)) / (1000 * 60 * 60 * 24) <= 60,
-      hasBeenDisputed: transaction.hasBeenDisputed || false
-    }));
-    
-    return res.status(200).json({
+    // Return mock bank data
+    res.status(200).json({
       success: true,
-      count: formattedTransactions.length,
-      data: formattedTransactions
+      count: mockBanks.length,
+      data: mockBanks
     });
-    
   } catch (error) {
-    console.error('Error getting account transactions:', error);
-    return res.status(500).json({
+    console.error('Error fetching banks:', error);
+    res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      error: 'Server error while fetching banks'
     });
   }
 };
 
-exports.getTransactions = async (req, res) => {
+exports.getUserAccounts = async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { filter, dateRange } = req.query;
+    const userId = req.user.id;
     
-    const account = await SavingsAccount.findById(accountId);
+    const user = await User.findById(userId).select('accounts');
     
-    if (!account) {
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Savings account not found'
+        error: 'User not found'
       });
     }
     
-    // Check if user is authorized to access this account
-    if (account.userId.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not authorized to access this account'
-      });
-    }
-    
-    // Filter transactions
-    let transactions = account.transactions;
-    
-    // Filter by transaction type
-    if (filter && filter !== 'all') {
-      transactions = transactions.filter(txn => txn.type === filter);
-    }
-    
-    // Filter by date range
-    if (dateRange) {
-      const today = new Date();
-      let startDate;
-      
-      switch (dateRange) {
-        case '30days':
-          startDate = new Date();
-          startDate.setDate(today.getDate() - 30);
-          break;
-        case '60days':
-          startDate = new Date();
-          startDate.setDate(today.getDate() - 60);
-          break;
-        case '90days':
-          startDate = new Date();
-          startDate.setDate(today.getDate() - 90);
-          break;
-        default:
-          startDate = new Date(0); // Beginning of time
+    res.status(200).json({
+      success: true,
+      data: {
+        accounts: user.accounts
       }
-      
-      transactions = transactions.filter(txn => new Date(txn.date) >= startDate);
-    }
-    
-    return res.status(200).json({
-      success: true,
-      count: transactions.length,
-      data: transactions
     });
-    
   } catch (error) {
-    console.error('Error getting transactions:', error);
-    return res.status(500).json({
+    console.error('Error fetching user accounts:', error);
+    res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      error: 'Server error while fetching accounts'
     });
   }
 };
 
-exports.addTransaction = async (req, res) => {
+exports.getSavedRecipients = async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { type, amount, description } = req.body;
+    const userId = req.user.id;
     
-    if (!type || !amount || !description) {
+    // For now, return empty array since you don't have SavedRecipient model
+    // You can implement this later
+    res.status(200).json({
+      success: true,
+      count: 0,
+      data: []
+    });
+  } catch (error) {
+    console.error('Error fetching saved recipients:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error while fetching recipients'
+    });
+  }
+};
+
+exports.createTransfer = async (req, res) => {
+  try {
+    const userId = req.user.id;
+    
+    const {
+      transferType,
+      fromAccount,
+      toAccount,
+      amount,
+      memo,
+      emailReceipt,
+      emailAddress,
+      transferDate,
+      transferFrequency,
+      recurringEndDate,
+      externalAccount,
+      wireTransfer
+    } = req.body;
+
+    // Validate amount
+    const transferAmount = parseFloat(amount);
+    if (isNaN(transferAmount) || transferAmount <= 0) {
       return res.status(400).json({
         success: false,
-        message: 'Please provide type, amount, and description'
+        error: 'Invalid transfer amount'
       });
     }
-    
-    const account = await SavingsAccount.findById(accountId);
-    
-    if (!account) {
+
+    // Get user with accounts
+    const user = await User.findById(userId);
+    if (!user) {
       return res.status(404).json({
         success: false,
-        message: 'Savings account not found'
+        error: 'User not found'
       });
     }
-    
-    // Check if user is authorized to modify this account
-    if (account.userId.toString() !== req.user.id) {
-      return res.status(403).json({
+
+    // Find source account
+    const sourceAccount = user.accounts.find(acc => acc.accountNumber === fromAccount);
+    if (!sourceAccount) {
+      return res.status(404).json({
         success: false,
-        message: 'You are not authorized to modify this account'
+        error: 'Source account not found'
       });
     }
-    
-    // Check withdrawal limits
-    if (type === 'withdrawal' && account.currentMonthWithdrawals >= account.withdrawalLimit) {
+
+    // Calculate fee
+    const fee = transferType === 'wire' ? 30.00 : 0;
+    const totalAmount = transferAmount + fee;
+
+    // Check sufficient balance
+    if (sourceAccount.balance < totalAmount) {
       return res.status(400).json({
         success: false,
-        message: `You have reached the monthly withdrawal limit of ${account.withdrawalLimit}`
+        error: 'Insufficient funds in source account'
       });
     }
-    
-    // Add transaction
-    try {
-      await account.addTransaction({
-        type,
-        amount: parseFloat(amount),
-        description,
-        status: 'Completed'
-      });
+
+    // Generate confirmation number
+    const confirmationNumber = generateConfirmationNumber();
+    const transferDateObj = new Date(transferDate || Date.now());
+
+    // Handle different transfer types
+    if (transferType === 'internal') {
+      // Internal transfer between user's own accounts
+      const destinationAccount = user.accounts.find(acc => acc.accountNumber === toAccount);
       
+      if (!destinationAccount) {
+        return res.status(404).json({
+          success: false,
+          error: 'Destination account not found'
+        });
+      }
+
+      // Execute transfer
+      sourceAccount.balance -= totalAmount;
+      destinationAccount.balance += transferAmount;
+
+      // Add transactions
+      sourceAccount.transactions.push({
+        date: transferDateObj,
+        description: memo || `Transfer to ${destinationAccount.accountName}`,
+        amount: totalAmount,
+        type: 'debit',
+        category: 'Transfer',
+        balance: sourceAccount.balance
+      });
+
+      destinationAccount.transactions.push({
+        date: transferDateObj,
+        description: memo || `Transfer from ${sourceAccount.accountName}`,
+        amount: transferAmount,
+        type: 'credit',
+        category: 'Transfer',
+        balance: destinationAccount.balance
+      });
+
+      await user.save();
+
       return res.status(201).json({
         success: true,
-        message: 'Transaction added successfully',
+        message: 'Internal transfer completed successfully',
         data: {
-          account: {
-            id: account._id,
-            balance: account.balance,
-            availableBalance: account.availableBalance
+          confirmationNumber,
+          status: 'completed',
+          amount: transferAmount,
+          fee: fee,
+          total: totalAmount,
+          transferType: 'internal',
+          fromAccount: {
+            accountNumber: sourceAccount.accountNumber,
+            newBalance: sourceAccount.balance
           },
-          transaction: account.transactions[0]
+          toAccount: {
+            accountNumber: destinationAccount.accountNumber,
+            newBalance: destinationAccount.balance
+          }
         }
       });
-    } catch (error) {
-      return res.status(400).json({
-        success: false,
-        message: error.message
+
+    } else {
+      // External or wire transfer
+      // For now, deduct from source account and mark as pending
+      sourceAccount.balance -= totalAmount;
+
+      sourceAccount.transactions.push({
+        date: transferDateObj,
+        description: memo || `${transferType === 'wire' ? 'Wire' : 'External'} transfer`,
+        amount: totalAmount,
+        type: 'debit',
+        category: 'Transfer',
+        balance: sourceAccount.balance
+      });
+
+      if (fee > 0) {
+        sourceAccount.transactions.push({
+          date: transferDateObj,
+          description: 'Wire transfer fee',
+          amount: fee,
+          type: 'debit',
+          category: 'Fee',
+          balance: sourceAccount.balance
+        });
+      }
+
+      await user.save();
+
+      return res.status(201).json({
+        success: true,
+        message: 'Transfer initiated successfully. Processing may take 1-3 business days.',
+        data: {
+          confirmationNumber,
+          status: 'pending',
+          amount: transferAmount,
+          fee: fee,
+          total: totalAmount,
+          transferType: transferType,
+          transactionRef: confirmationNumber
+        }
       });
     }
     
   } catch (error) {
-    console.error('Error adding transaction:', error);
-    return res.status(500).json({
+    console.error('Error creating transfer:', error);
+    res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      error: 'Server error while processing transfer'
     });
   }
 };
 
-exports.downloadStatement = async (req, res) => {
+exports.verifyTransfer = async (req, res) => {
   try {
-    const { accountId } = req.params;
-    const { month, year, format } = req.query;
+    const { transferId, verificationCode } = req.body;
     
-    if (!month || !year || !format) {
-      return res.status(400).json({
-        success: false,
-        message: 'Please provide month, year, and format'
-      });
-    }
-    
-    const account = await SavingsAccount.findById(accountId);
-    
-    if (!account) {
-      return res.status(404).json({
-        success: false,
-        message: 'Savings account not found'
-      });
-    }
-    
-    // Check if user is authorized to access this account
-    if (account.userId.toString() !== req.user.id) {
-      return res.status(403).json({
-        success: false,
-        message: 'You are not authorized to access this account'
-      });
-    }
-    
-    // Filter transactions for the specified month and year
-    const startDate = new Date(year, month - 1, 1);
-    const endDate = new Date(year, month, 0); // Last day of month
-    
-    const transactions = account.transactions.filter(txn => {
-      const txnDate = new Date(txn.date);
-      return txnDate >= startDate && txnDate <= endDate;
+    // For now, return success
+    // You can implement proper verification logic later
+    res.status(200).json({
+      success: true,
+      message: 'Transfer verified successfully',
+      data: {
+        transferId,
+        status: 'completed'
+      }
     });
     
-    // In a real app, you would generate a PDF or CSV here
-    // For now, we'll just return the filtered transactions
-    if (format === 'json') {
-      return res.status(200).json({
-        success: true,
-        data: {
-          account: {
-            accountNumber: account.accountNumber,
-            ownerName: account.ownerName,
-            balance: account.balance,
-            month: startDate.toLocaleString('default', { month: 'long' }),
-            year
-          },
-          transactions
-        }
-      });
-    } else if (format === 'csv') {
-      // Placeholder for CSV generation logic
-      res.setHeader('Content-Type', 'text/csv');
-      res.setHeader('Content-Disposition', `attachment; filename="statement-${accountId}-${month}-${year}.csv"`);
-      
-      // Send CSV data
-      return res.status(200).send('Date,Description,Type,Amount,Balance\n');
-    } else if (format === 'pdf') {
-      // Placeholder for PDF generation logic
-      res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `attachment; filename="statement-${accountId}-${month}-${year}.pdf"`);
-      
-      // In a real app, you would generate and send a PDF here
-      return res.status(200).send('PDF data would be here');
-    } else {
-      return res.status(400).json({
+  } catch (error) {
+    console.error('Error verifying transfer:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error while verifying transfer'
+    });
+  }
+};
+
+exports.getTransferStatus = async (req, res) => {
+  try {
+    const { transferId } = req.params;
+    
+    // Mock response for now
+    res.status(200).json({
+      success: true,
+      data: {
+        transferId,
+        status: 'completed',
+        confirmationNumber: transferId
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error getting transfer status:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error while fetching transfer status'
+    });
+  }
+};
+
+exports.getAllTransfers = async (req, res) => {
+  try {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({
         success: false,
-        message: 'Invalid format. Supported formats: json, csv, pdf'
+        error: 'Not authorized to access this resource'
       });
     }
     
+    // Return empty array for now
+    res.status(200).json({
+      success: true,
+      count: 0,
+      data: []
+    });
+    
   } catch (error) {
-    console.error('Error downloading statement:', error);
-    return res.status(500).json({
+    console.error('Error getting all transfers:', error);
+    res.status(500).json({
       success: false,
-      message: 'Server error',
-      error: error.message
+      error: 'Server error'
+    });
+  }
+};
+
+exports.approveTransfer = async (req, res) => {
+  try {
+    if (!req.user.isAdmin) {
+      return res.status(403).json({
+        success: false,
+        error: 'Not authorized to access this resource'
+      });
+    }
+    
+    const { transferId } = req.params;
+    
+    res.status(200).json({
+      success: true,
+      message: 'Transfer approved successfully',
+      data: {
+        transferId,
+        status: 'completed'
+      }
+    });
+    
+  } catch (error) {
+    console.error('Error approving transfer:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Server error'
     });
   }
 };
